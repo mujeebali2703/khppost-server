@@ -2,9 +2,12 @@ const express = require('express');
 const app = express();
 const port = 3180;
 var cors = require('cors');
+// const bodyParser = require('body-parser');
+// app.use(bodyParser());
+app.use(express.json());
 app.use(cors());
 
-const postData = [
+var postData = [
     {
       "id": "01399764-8ff5-43ae-8770-cde92173a47a",
       "creator": {
@@ -543,9 +546,31 @@ const postData = [
     }
   ];
 
-  app.get('/getpostdata',(req,res)=>{
-        res.send(JSON.parse(JSON.stringify(postData)))
-  })
+app.get('/getpostdata',(req,res)=>{
+      res.send(JSON.parse(JSON.stringify(postData)))
+})
+
+app.delete('/deletepost', (req, res) => {
+  const { id } = req.body;
+  if (id !== undefined) {
+    postData = postData.filter((post) => post.id !== id);
+    res.send(postData);
+  } else {
+    res.status(400).send("Invalid request. 'id' is missing in the request body.");
+  }
+});
+
+app.post('/createpost', (req, res) => {
+  const { post } = req.body;
+  if (post !== undefined) {
+    postData = postData.push(post);
+    res.send(postData);
+  } else {
+    res.status(400).send("Invalid request. 'id' is missing in the request body.");
+  }
+});
+
+
 
 app.get('/',(req,res)=>{
     res.send('Hello Wajahat!!');
