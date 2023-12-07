@@ -10,6 +10,7 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '200MB', parameterLimit: 
 app.use(bodyParser.raw()); // Change '5mb' to your desired limit
 
 var postData = [];
+var users = [];
 
 app.get('/getpostdata', (req, res) => {
   res.send(JSON.parse(JSON.stringify(postData)))
@@ -37,10 +38,14 @@ app.post('/createpost', (req, res) => {
 
 app.put('/updatepost', (req, res) => {
   const { post } = req.body;
+  const index = postData.findIndex((value) => {
+    return value?.id === post?.id
+  });
+  postData[index] = post;
   // Write logic to find and update post fom array
   // if (post !== undefined) {
   //   postData.push(post);
-  //   res.send(post);
+  res.send(post);
   // } else {
   //   res.status(400).send("Invalid request. 'id' is missing in the request body.");
   // }
