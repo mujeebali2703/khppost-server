@@ -71,8 +71,6 @@ const postSchema = new mongoose.Schema({
 
 const Post = mongoose.model('Post', postSchema);
 
-var postData = [];
-
 app.get('/getpostdata', async (req, res) => {
 
   const posts = await Post.find({}, null, { limit: 10 }).exec();
@@ -99,6 +97,7 @@ app.post('/createpost', (req, res) => {
         mainSrc: Buffer.from(post.photo.mainSrc, 'base64')
       }
     }
+
     // Create a new post document
     const newPost = new Post(latestPost);
 
