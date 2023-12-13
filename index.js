@@ -21,58 +21,52 @@ db.once('open', () => {
   // Perform additional setup or start your application here
 });
 
+// User Schema
+const userSchema = new mongoose.Schema({
+  displayName: { type: String, required: true },
+  nickName: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  dob: { type: Date, required: true },
+  createdAt: { type: Date, default: Date.now },
+  profile: { type: Buffer }
+});
 
+// Post Schema
 const postSchema = new mongoose.Schema({
-  creator: {
-    id: { type: String, required: true },
-    displayName: { type: String, required: true },
-    nickName: { type: String },
-    avatarURL: { type: Buffer },
-  },
-  status: { type: String, enum: ['PUBLISHED'], required: true },
-  to: {
-    name: { type: String },
-  },
-  from: {
-    name: { type: String },
-  },
-  photo: {
-    mainSrc: { type: Buffer },
-    thumbnailSrc: { type: Buffer },
-    alt: { type: String },
-  },
-  text: { type: String },
-  createdOn: { type: String },
-  updatedOn: { type: String },
-  statistics: {
-    id: { type: String },
-    views: { type: Number, default: 0 },
-    likes: { type: Number, default: 0 },
-    dislikes: { type: Number, default: 0 },
-    replies: { type: Number, default: 0 },
-    repeats: { type: Number, default: 0 },
-    saves: { type: Number, default: 0 },
-    flags: { type: Number, default: 0 },
-    state: { type: String, enum: ['NEITHER'], default: 'NEITHER' },
-    hasReplied: { type: Boolean, default: false },
-    hasRepeated: { type: Boolean, default: false },
-    hasSaved: { type: Boolean, default: false },
-    hasFlagged: { type: Boolean, default: false },
-  },
-  tags: [
-    {
-      slug: { type: String },
-    },
-  ],
-  parent: {
-    id: { type: String },
-  },
-}, { timestamps: true });
+  content: { type: String, required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  reactions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Reaction' }],
+  comments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Comment' }],
+  photo: [{ type: Buffer, required: true }],
+  tags: [{ type: String }],
+  status: { type: String, enum: ['PUBLISHED', 'UNPUBLISHED'], required: true, default: 'PUBLISHED' }
+});
+
+// Comment Schema
+const commentSchema = new mongoose.Schema({
+  content: { type: String, required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', required: true }
+});
+
+
+// Reaction Schema
+const reactionSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', required: true },
+  type: { type: String, enum: ['like', 'dislike'], required: true },
+  createdAt: { type: Date, default: Date.now }
+});
 
 const Post = mongoose.model('Post', postSchema);
+const User = mongoose.model('User', userSchema);
+const Comment = mongoose.model('Comment', commentSchema);
+const Reaction = mongoose.model('Reaction', reactionSchema);
 
 app.get('/getpostdata', async (req, res) => {
-
   const posts = await Post.find({}, null, { limit: 10 }).exec();
   res.send(JSON.parse(JSON.stringify(posts)))
 })
@@ -134,25 +128,18 @@ app.put('/updatepost', (req, res) => {
 
 app.post('/register', (req, res) => {
   const { user } = req.body;
-  const data = fs.readFileSync('users.json', 'utf-8', (error) => {
-    res.send(error)
-  });
 
-
-
-  const parsedData = data.length > 0 ? JSON.parse(data) : [];
-
-  const exist = parsedData.filter((currentUser) => currentUser.email === user.email).length > 0;
-
-  if (exist) {
-    res.send('User Already Registered!!')
-    return;
+  const newUser = {
+    ...user,
+    profile: Buffer.from(user.profile, 'base64')
   }
 
-  parsedData.push(user)
+  const regUser = new User(newUser);
 
-  fs.writeFileSync('users.json', JSON.stringify(parsedData), (error) => {
-    console.log(error)
+  regUser.save().then((res) => {
+    console.log('User Registered Successfully')
+  }).catch((err) => {
+    console.log(err)
   })
 
   res.send(user)
@@ -165,24 +152,10 @@ app.get('/getusers', (req, res) => {
   res.send(JSON.parse(JSON.stringify(data)))
 })
 
-app.post('/login', (req, res) => {
-  const { user } = req.body;
-  const resp = users.filter((regUser) => {
-    var result = null;
-    if (regUser.email !== user.email)
-      result = 'User not Found! Please Register';
-    else if (regUser.password !== user.password)
-      result = 'Invalid Password';
-    else if (regUser.email !== user.email && regUser.password !== user.password)
-      result = 'Invalid Data';
-    else
-      result = user;
-    return result;
-  })
-
-  console.log(resp)
-
-  res.send(resp[0]);
+app.post('/login', async (req, res) => {
+  const { user: { email, password } } = req.body;
+  const auth = await User.findOne({ email, password });
+  res.send(auth);
 })
 
 
