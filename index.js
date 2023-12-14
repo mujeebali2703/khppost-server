@@ -135,6 +135,7 @@ app.post('/register', (req, res) => {
   }
 
   const regUser = new User(newUser);
+  // Obj with Data
 
   regUser.save().then((res) => {
     console.log('User Registered Successfully')
