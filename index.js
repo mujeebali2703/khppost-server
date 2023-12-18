@@ -67,36 +67,58 @@ const Comment = mongoose.model('Comment', commentSchema);
 const Reaction = mongoose.model('Reaction', reactionSchema);
 
 app.get('/getpostdata', async (req, res) => {
-  const posts = await Post.find({}, null, { limit: 10 }).exec();
+  const posts = await Post.aggregate([
+    {
+      $lookup: {
+        from: 'users',  // Name of the 'users' collection
+        localField: 'user',
+        foreignField: '_id',
+        as: 'user'
+      }
+    },
+    {
+      $unwind: '$user' // Unwind the array created by $lookup to get a single user object
+    },
+    {
+      $match: {
+        status: 'PUBLISHED' // Filter only published posts
+      }
+    },
+    {
+      $project: {
+        'user.password': 0, // Exclude password from user object
+      }
+    }
+  ]);
   res.send(JSON.parse(JSON.stringify(posts)))
 })
 
 app.delete('/deletepost', async (req, res) => {
   const { id } = req.body;
   if (id !== undefined) {
-    const posts = await Post.findByIdAndDelete(id, null, { limit: 10 }).exec();
+    const posts = await Post.findByIdAndUpdate(id, { status: 'UNPUBLISHED' }).exec();
     res.send(posts);
   } else {
     res.status(400).send("Invalid request. 'id' is missing in the request body.");
   }
 });
 
-app.post('/createpost', (req, res) => {
+app.post('/createpost', async (req, res) => {
   const { post } = req.body;
   if (post !== undefined) {
 
     const latestPost = {
       ...post,
-      photo: {
-        mainSrc: Buffer.from(post.photo.mainSrc, 'base64')
-      }
+      photo: [
+        Buffer.from(post.photo, 'base64')
+      ]
     }
 
     // Create a new post document
     const newPost = new Post(latestPost);
 
     // Save the post to the database
-    newPost.save()
+    await newPost.save()
       .then(savedPost => {
         console.log('Post created successfully:', savedPost);
       })
@@ -109,19 +131,15 @@ app.post('/createpost', (req, res) => {
   }
 });
 
-app.put('/updatepost', (req, res) => {
-  const { post } = req.body;
-  const index = postData.findIndex((value) => {
-    return value?.id === post?.id
-  });
-  postData[index] = post;
-  // Write logic to find and update post fom array
-  // if (post !== undefined) {
-  //   postData.push(post);
-  res.send(post);
-  // } else {
-  //   res.status(400).send("Invalid request. 'id' is missing in the request body.");
-  // }
+app.put('/updatepost', async (req, res) => {
+  const { id, post } = req.body;
+
+  try {
+    const result = await Post.findByIdAndUpdate(id, post).exec();
+    res.send(result);
+  } catch (err) {
+    res.send(err)
+  }
 });
 
 // ----------------------------------------------------------------------
