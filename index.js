@@ -1,13 +1,14 @@
 const express = require('express');
 const app = express();
 const port = 3180;
-var cors = require('cors');
+const cors = require('cors');
 app.use(cors());
 const bodyParser = require('body-parser');
 app.use(bodyParser.json({ limit: '200MB' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '200MB', parameterLimit: 20000 }));
-app.use(bodyParser.raw()); // Change '5mb' to your desired limit
-const fs = require('fs');
+app.use(bodyParser.raw());
+const http = require('http');
+const socketIO = require('socket.io');
 
 const mongoose = require('mongoose');
 const MONGODB_URI = 'mongodb://localhost:27017/khppost'
@@ -61,37 +62,71 @@ const reactionSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Conversation Schema
+const conversationSchema = new mongoose.Schema({
+  sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  receiver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  startedOn: { type: Date, default: Date.now }
+});
+
+// Message Schema
+const messageSchema = new mongoose.Schema({
+  message: { type: String, required: true },
+  sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  conversation: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', required: true },
+  sentOn: { type: Date, default: Date.now }
+});
+
 const Post = mongoose.model('Post', postSchema);
 const User = mongoose.model('User', userSchema);
 const Comment = mongoose.model('Comment', commentSchema);
 const Reaction = mongoose.model('Reaction', reactionSchema);
+const Conversation = mongoose.model('Conversation', conversationSchema);
+const Message = mongoose.model('Message', messageSchema);
 
-app.get('/getpostdata', async (req, res) => {
-  const posts = await Post.aggregate([
+
+app.post('/getpostdata', async (req, res) => {
+  const { value } = req.body;
+  let pipeline = [
     {
       $lookup: {
-        from: 'users',  // Name of the 'users' collection
+        from: 'users',
         localField: 'user',
         foreignField: '_id',
         as: 'user'
       }
     },
     {
-      $unwind: '$user' // Unwind the array created by $lookup to get a single user object
+      $unwind: '$user'
     },
     {
       $match: {
-        status: 'PUBLISHED' // Filter only published posts
+        status: 'PUBLISHED'
       }
     },
     {
       $project: {
-        'user.password': 0, // Exclude password from user object
+        'user.password': 0,
       }
     }
-  ]);
-  res.send(JSON.parse(JSON.stringify(posts)))
-})
+  ];
+
+  // If search query is provided, add a $match stage to filter by search
+  if (value) {
+    pipeline = [
+      ...pipeline,
+      {
+        $match: {
+          content: { $regex: new RegExp(value, 'i') } // Case-insensitive search using regex
+        }
+      }
+    ];
+  }
+
+  // Execute the aggregation pipeline
+  const posts = await Post.aggregate(pipeline).exec();
+  res.send(posts);
+});
 
 app.delete('/deletepost', async (req, res) => {
   const { id } = req.body;
@@ -177,12 +212,38 @@ app.post('/login', async (req, res) => {
   res.send(auth);
 })
 
+app.post('/searchuser', async (req, res) => {
+  const { text } = req.body;
+  const users = await User.find({ displayName: new RegExp(text, 'i') });
+  res.send(users);
+})
 
 app.get('/', (req, res) => {
   res.send('Hello Wajahat!!');
 })
+const server = http.createServer(app);
+const io = socketIO(server, {
+  cors: {
+    origin: "*",  // Replace with the origin of your client app
+    methods: ["GET", "POST", 'PUT', 'DELETE']
+  }
+});  // Create a Socket.IO server instance
 
-app.listen(port, () => {
-  console.log('Express App Running!!');
-})
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
+
+  socket.on('sendMessage', (data) => {
+    io.emit('sendMessage', data);
+  });
+
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+server.listen(port, () => {
+  console.log('Express server Running!!');
+});
 
