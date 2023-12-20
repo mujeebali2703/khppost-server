@@ -234,7 +234,12 @@ app.post('/getConversationMessages', async (req, res) => {
 
 app.post('/getConversation', async (req, res) => {
   const { id } = req.body;
-  const conversation = await Conversation.findOne({ receiver: id }).exec();
+  const conversation = await Conversation.findOne({
+    $or: [
+      { sender: new mongoose.Types.ObjectId(id) },
+      { receiver: new mongoose.Types.ObjectId(id) }
+    ]
+  }).exec();
   res.send(conversation);
 })
 
