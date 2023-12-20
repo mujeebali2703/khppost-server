@@ -73,6 +73,7 @@ const conversationSchema = new mongoose.Schema({
 const messageSchema = new mongoose.Schema({
   message: { type: String, required: true },
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  receiver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   conversation: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', required: true },
   sentOn: { type: Date, default: Date.now }
 });
@@ -221,6 +222,25 @@ app.post('/searchuser', async (req, res) => {
 app.get('/', (req, res) => {
   res.send('Hello Wajahat!!');
 })
+// -----------------------------------------------------------------------------
+
+app.post('/getConversationMessages', async (req, res) => {
+  const { id } = req.body;
+
+  const messages = await Message.find({ conversation: id }).exec();
+  console.log(id)
+  res.send(messages);
+})
+
+app.post('/getConversation', async (req, res) => {
+  const { id } = req.body;
+  const conversation = await Conversation.findOne({ receiver: id }).exec();
+  res.send(conversation);
+})
+
+
+
+
 const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
@@ -233,7 +253,40 @@ io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
   socket.on('sendMessage', (data) => {
-    io.emit('sendMessage', data);
+
+    var conversation = null;
+
+    if (data?.newConversation === 0) {// create conversation if new
+
+      conversation = new Conversation({
+        sender: data?.sender,
+        receiver: data?.receiver,
+        startedOn: new Date()
+      })
+
+      conversation.save().then(async (savedConversation) => {
+        io.emit('newConversation', savedConversation);
+      }).catch(err => {
+        console.log(err)
+      });
+    }
+
+    const newMessageObject = {
+      message: data?.content,
+      sender: data?.sender,
+      receiver: data?.receiver,
+      conversation: conversation ? conversation?._id : data?.newConversation,
+      sentOn: new Date()
+    }
+
+
+    const newMessage = new Message(newMessageObject);
+    newMessage.save().then(async (savedMessage) => {
+      io.emit('newMessage', savedMessage);
+    }).catch(err => {
+      console.log(err)
+    });
+
   });
 
 
