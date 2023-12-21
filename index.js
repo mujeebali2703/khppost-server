@@ -88,29 +88,59 @@ const Message = mongoose.model('Message', messageSchema);
 
 app.post('/getpostdata', async (req, res) => {
   const { value } = req.body;
-  let pipeline = [
+  const pipeline = [
     {
       $lookup: {
         from: 'users',
         localField: 'user',
         foreignField: '_id',
-        as: 'user'
-      }
+        as: 'user',
+      },
     },
     {
-      $unwind: '$user'
+      $unwind: '$user',
     },
     {
       $match: {
-        status: 'PUBLISHED'
-      }
+        status: 'PUBLISHED',
+      },
+    },
+    {
+      $lookup: {
+        from: 'reactions',
+        localField: '_id',
+        foreignField: 'post',
+        as: 'reactions',
+      },
+    },
+    {
+      $addFields: {
+        likeCount: {
+          $size: {
+            $filter: {
+              input: '$reactions',
+              cond: { $eq: ['$reactions.type', 'like'] },
+            },
+          },
+        },
+        dislikeCount: {
+          $size: {
+            $filter: {
+              input: '$reactions',
+              cond: { $eq: ['$reactions.type', 'dislike'] },
+            },
+          },
+        },
+      },
     },
     {
       $project: {
         'user.password': 0,
-      }
-    }
+        reactions: 0, // Optional: Exclude reactions from the final result if needed
+      },
+    },
   ];
+
 
   // If search query is provided, add a $match stage to filter by search
   if (value) {
