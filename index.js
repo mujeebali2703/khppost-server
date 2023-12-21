@@ -87,8 +87,8 @@ const Message = mongoose.model('Message', messageSchema);
 
 
 app.post('/getpostdata', async (req, res) => {
-  const { value } = req.body;
-  const pipeline = [
+  const { value, user } = req.body;
+  let pipeline = [
     {
       $lookup: {
         from: 'users',
@@ -119,7 +119,7 @@ app.post('/getpostdata', async (req, res) => {
           $size: {
             $filter: {
               input: '$reactions',
-              cond: { $eq: ['$reactions.type', 'like'] },
+              cond: { $eq: ['$$this.type', 'like'] },
             },
           },
         },
@@ -127,35 +127,59 @@ app.post('/getpostdata', async (req, res) => {
           $size: {
             $filter: {
               input: '$reactions',
-              cond: { $eq: ['$reactions.type', 'dislike'] },
+              cond: { $eq: ['$$this.type', 'dislike'] },
             },
           },
         },
       },
     },
     {
+      $lookup: {
+        from: 'reactions',
+        let: { postId: '$_id', userId: { $toObjectId: user } },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$post', '$$postId'] },
+                  { $eq: ['$user', '$$userId'] },
+                ],
+              },
+            },
+          },
+        ],
+        as: 'userReactions',
+      },
+    },
+    {
+      $addFields: {
+        hasLiked: { $gt: [{ $size: '$userReactions' }, 0] },
+        hasDisliked: { $eq: [{ $size: '$userReactions' }, 0] },
+      },
+    },
+    {
       $project: {
         'user.password': 0,
-        reactions: 0, // Optional: Exclude reactions from the final result if needed
+        reactions: 0,
       },
     },
   ];
-
-
   // If search query is provided, add a $match stage to filter by search
   if (value) {
     pipeline = [
       ...pipeline,
       {
         $match: {
-          content: { $regex: new RegExp(value, 'i') } // Case-insensitive search using regex
-        }
-      }
+          content: { $regex: new RegExp(value, 'i') }, // Case-insensitive search using regex
+        },
+      },
     ];
   }
 
   // Execute the aggregation pipeline
   const posts = await Post.aggregate(pipeline).exec();
+
   res.send(posts);
 });
 
@@ -322,6 +346,39 @@ io.on('connection', (socket) => {
       console.log(err)
     });
 
+  });
+
+  socket.on('likePost', async (data) => {
+    const { post } = data;
+    const reaction = new Reaction(data);
+    reaction.save()
+    // Use async/await to wait for the update to complete
+    const updatedPost = await Post.findByIdAndUpdate(
+      { _id: post?._id },
+      { $push: { reactions: reaction } },
+      { new: true } // Returns the updated document
+    ).exec();
+
+    io.emit('likedPost', { post: updatedPost });
+  });
+
+  socket.on('unlikePost', async (data) => {
+    // Find the reaction by ID and retrieve its post field
+    const id = data?.post?.userReactions[0]?._id;
+    const reaction = await Reaction.findById(id).select('post').exec();
+
+    if (reaction) {
+      const postId = reaction.post;
+
+      // Delete the reaction by ID
+      await Reaction.findByIdAndDelete(id).exec();
+
+      // Update the post's reactions field
+      await Post.findByIdAndUpdate(postId, {
+        $pull: { reactions: id } // Remove the reaction ID from the reactions array
+      }).exec();
+    }
+    io.emit('unlikedPost')
   });
 
 
