@@ -362,23 +362,65 @@ io.on('connection', (socket) => {
     io.emit('likedPost', { post: updatedPost });
   });
 
-  socket.on('unlikePost', async (data) => {
+  socket.on('unlikePost', async ({ post, user, type }) => {
     // Find the reaction by ID and retrieve its post field
-    const id = data?.post?.userReactions[0]?._id;
-    const reaction = await Reaction.findById(id).select('post').exec();
+    const currentReaction = await Reaction.findOne({
+      post, // Replace postId with the actual post ID you are searching for
+      user, // Replace userId with the actual user ID you are searching for
+      type // Replace reactionType with the actual reaction type you are searching for
+    }).exec();
+
+    const reaction = await Reaction.findById(currentReaction?._id).select('post').exec();
+
+    if (reaction) {
+      const postId = reaction.post;
+      // Delete the reaction by ID
+      await Reaction.findByIdAndDelete(currentReaction?._id).exec();
+
+      // Update the post's reactions field
+      await Post.findByIdAndUpdate(postId, {
+        $pull: { reactions: currentReaction?._id } // Remove the reaction ID from the reactions array
+      }).exec();
+    }
+    io.emit('unlikedPost')
+  });
+
+  socket.on('dislikePost', async (data) => {
+    const { post } = data;
+    const reaction = new Reaction(data);
+    reaction.save()
+    // Use async/await to wait for the update to complete
+    const updatedPost = await Post.findByIdAndUpdate(
+      { _id: post?._id },
+      { $push: { reactions: reaction } },
+      { new: true } // Returns the updated document
+    ).exec();
+
+    io.emit('dislikedPost', { post: updatedPost });
+  });
+
+  socket.on('undislikePost', async ({ post, user, type }) => {
+    // Find the reaction by ID and retrieve its post field
+    const currentReaction = await Reaction.findOne({
+      post, // Replace postId with the actual post ID you are searching for
+      user, // Replace userId with the actual user ID you are searching for
+      type // Replace reactionType with the actual reaction type you are searching for
+    }).exec();
+
+    const reaction = await Reaction.findById(currentReaction?._id).select('post').exec();
 
     if (reaction) {
       const postId = reaction.post;
 
       // Delete the reaction by ID
-      await Reaction.findByIdAndDelete(id).exec();
+      await Reaction.findByIdAndDelete(currentReaction?._id).exec();
 
       // Update the post's reactions field
       await Post.findByIdAndUpdate(postId, {
-        $pull: { reactions: id } // Remove the reaction ID from the reactions array
+        $pull: { reactions: currentReaction?._id } // Remove the reaction ID from the reactions array
       }).exec();
     }
-    io.emit('unlikedPost')
+    io.emit('undislikedPost')
   });
 
 
