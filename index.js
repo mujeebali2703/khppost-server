@@ -293,7 +293,16 @@ app.post('/getConversation', async (req, res) => {
       { sender: new mongoose.Types.ObjectId(id) },
       { receiver: new mongoose.Types.ObjectId(id) }
     ]
-  }).exec();
+  })
+    .populate({
+      path: 'sender',
+      select: '-profile -email -password' // Exclude 'profile' field from sender
+    })
+    .populate({
+      path: 'receiver',
+      select: '-profile -email -password' // Exclude 'profile' field from receiver
+    })
+    .exec();
   res.send(conversation);
 })
 
