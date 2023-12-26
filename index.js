@@ -268,8 +268,8 @@ app.post('/login', async (req, res) => {
 })
 
 app.post('/searchuser', async (req, res) => {
-  const { text } = req.body;
-  const users = await User.find({ displayName: new RegExp(text, 'i') });
+  const { text, id } = req.body;
+  const users = await User.find({ _id: { $ne: id }, displayName: new RegExp(text, 'i') });
   res.send(users);
 })
 
@@ -280,31 +280,43 @@ app.get('/', (req, res) => {
 
 app.post('/getConversationMessages', async (req, res) => {
   const { id } = req.body;
-
   const messages = await Message.find({ conversation: id }).exec();
-  console.log(id)
   res.send(messages);
-})
+});
+
+app.post('/getConversationByUser', async (req, res) => {
+  const { id, user_id } = req.body;
+
+  console.log(id, user_id)
+  const conversation = await Conversation.findOne({
+    $or: [
+      { sender: new mongoose.Types.ObjectId(id), receiver: new mongoose.Types.ObjectId(user_id) },
+      { receiver: new mongoose.Types.ObjectId(id), sender: new mongoose.Types.ObjectId(user_id) }
+    ]
+  })
+    .populate({ path: 'sender', select: '-profile -email -password' })
+    .populate({ path: 'receiver', select: '-profile -email -password' })
+
+    .exec();
+
+  console.log(conversation)
+  res.send(conversation);
+});
 
 app.post('/getConversation', async (req, res) => {
   const { id } = req.body;
-  const conversation = await Conversation.findOne({
+  const conversation = await Conversation.find({
     $or: [
       { sender: new mongoose.Types.ObjectId(id) },
       { receiver: new mongoose.Types.ObjectId(id) }
     ]
   })
-    .populate({
-      path: 'sender',
-      select: '-profile -email -password' // Exclude 'profile' field from sender
-    })
-    .populate({
-      path: 'receiver',
-      select: '-profile -email -password' // Exclude 'profile' field from receiver
-    })
+    .populate({ path: 'sender', select: '-profile -email -password' })
+    .populate({ path: 'receiver', select: '-profile -email -password' })
+
     .exec();
   res.send(conversation);
-})
+});
 
 
 
@@ -442,4 +454,3 @@ io.on('connection', (socket) => {
 server.listen(port, () => {
   console.log('Express server Running!!');
 });
-
