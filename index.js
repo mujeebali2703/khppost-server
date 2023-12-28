@@ -159,6 +159,14 @@ app.post('/getpostdata', async (req, res) => {
       },
     },
     {
+      $lookup: {
+        from: 'comments',  // Adjust this to the actual collection name for comments
+        localField: '_id',
+        foreignField: 'post',
+        as: 'comments',
+      },
+    },
+    {
       $project: {
         'user.password': 0,
         reactions: 0,
@@ -368,6 +376,27 @@ io.on('connection', (socket) => {
     });
 
   });
+
+  socket.on('publishComment', async ({ comment }) => {
+    try {
+      const newComment = new Comment(comment);
+      await newComment.save();
+
+      // // Use async/await to wait for the update to complete
+
+      const updatedPost = await Post.findByIdAndUpdate(
+        { _id: comment?.post },
+        { $push: { comments: newComment?._id } },
+        { new: true } // Returns the updated document
+      ).exec();
+
+      io.emit('newComment', { updatedPost });
+
+    } catch (ex) {
+      io.emit('Error', ex);
+    }
+  });
+
 
   socket.on('likePost', async (data) => {
     const { post } = data;
