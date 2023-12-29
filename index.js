@@ -191,6 +191,121 @@ app.post('/getpostdata', async (req, res) => {
   res.send(posts);
 });
 
+app.post('/getpostdatabyid', async (req, res) => {
+  const { id, user } = req.body;
+
+  // const posts = await Post.find({ _id: id })
+  //   .populate('user', 'displayName profile')
+  //   .populate('reactions') // You can customize this based on your needs
+  //   .populate({
+  //     path: 'comments',
+  //     populate: { path: 'user', select: 'displayName' }
+  //   })
+  //   .exec();
+
+  let pipeline = [
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'user',
+        foreignField: '_id',
+        as: 'user',
+      },
+    },
+    {
+      $unwind: '$user',
+    },
+    {
+      $match: {
+        status: 'PUBLISHED',
+      },
+    },
+    {
+      $lookup: {
+        from: 'reactions',
+        localField: '_id',
+        foreignField: 'post',
+        as: 'reactions',
+      },
+    },
+    {
+      $addFields: {
+        likeCount: {
+          $size: {
+            $filter: {
+              input: '$reactions',
+              cond: { $eq: ['$$this.type', 'like'] },
+            },
+          },
+        },
+        dislikeCount: {
+          $size: {
+            $filter: {
+              input: '$reactions',
+              cond: { $eq: ['$$this.type', 'dislike'] },
+            },
+          },
+        },
+      },
+    },
+    {
+      $lookup: {
+        from: 'reactions',
+        let: { postId: '$_id', userId: { $toObjectId: user } },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$post', '$$postId'] },
+                  { $eq: ['$user', '$$userId'] },
+                ],
+              },
+            },
+          },
+        ],
+        as: 'userReactions',
+      },
+    },
+    {
+      $addFields: {
+        hasLiked: { $gt: [{ $size: '$userReactions' }, 0] },
+        hasDisliked: { $eq: [{ $size: '$userReactions' }, 0] },
+      },
+    },
+    {
+      $lookup: {
+        from: 'comments',  // Adjust this to the actual collection name for comments
+        localField: '_id',
+        foreignField: 'post',
+        as: 'comments',
+      },
+    },
+    {
+      $project: {
+        'user.password': 0,
+        reactions: 0,
+      },
+    },
+  ];
+  // If search query is provided, add a $match stage to filter by search
+  if (id) {
+    pipeline = [
+      ...pipeline,
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(id), // Case-insensitive search using regex
+        },
+      },
+    ];
+  }
+
+  const posts = await Post.aggregate(pipeline).exec();
+  console.log(posts)
+
+  res.send(posts);
+});
+
 app.delete('/deletepost', async (req, res) => {
   const { id } = req.body;
   if (id !== undefined) {
