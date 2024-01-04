@@ -4,15 +4,19 @@ const port = 3180;
 const cors = require('cors');
 app.use(cors());
 const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 app.use(bodyParser.json({ limit: '200MB' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '200MB', parameterLimit: 20000 }));
 app.use(bodyParser.raw());
 const http = require('http');
 const socketIO = require('socket.io');
+app.use(express.static(__dirname + '/photos/'));
+// Serve static files (images)
+app.use('/photos', express.static(path.join(__dirname, 'photos')));
 
 const mongoose = require('mongoose');
 const MONGODB_URI = 'mongodb://localhost:27017/khppost'
-
 mongoose.connect(MONGODB_URI);
 
 const db = mongoose.connection;
@@ -30,7 +34,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   dob: { type: Date, required: true },
   createdAt: { type: Date, default: Date.now },
-  profile: { type: Buffer }
+  profile: { type: String }
 });
 
 // Post Schema
@@ -40,7 +44,7 @@ const postSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   reactions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Reaction' }],
   comments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Comment' }],
-  photo: [{ type: Buffer, required: true }],
+  photo: [{ type: String, required: true }],
   tags: [{ type: String }],
   status: { type: String, enum: ['PUBLISHED', 'UNPUBLISHED'], required: true, default: 'PUBLISHED' }
 });
@@ -316,14 +320,51 @@ app.delete('/deletepost', async (req, res) => {
   }
 });
 
+function dataURItoBuffer(dataURI) {
+  // Extract base64 data from the Data URI
+  const base64Data = dataURI.split(';base64,').pop();
+
+  // Convert base64 data to buffer
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  return buffer;
+}
+
+function generateUniqueId() {
+  const timestamp = new Date().getTime().toString(16);
+  const randomPart = Math.random().toString(16).substring(2);
+
+  return `${timestamp}-${randomPart}`;
+}
+
 app.post('/createpost', async (req, res) => {
   const { post } = req.body;
   if (post !== undefined) {
 
+    const buffer = dataURItoBuffer(post.photo);
+
+    let filePath = `photos/posts/${generateUniqueId()}.jpg`;
+
+    // Ensure the directory exists
+    const directory = path.dirname(filePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+
+    // Save the buffer to a file
+    fs.writeFile(filePath, buffer, (err) => {
+      if (err) {
+        console.error('Error saving image:', err);
+      } else {
+        console.log('Image saved successfully:', filePath);
+      }
+    });
+
+
     const latestPost = {
       ...post,
       photo: [
-        Buffer.from(post.photo, 'base64')
+        `http://localhost:3180/${filePath}`
       ]
     }
 
@@ -360,9 +401,28 @@ app.put('/updatepost', async (req, res) => {
 app.post('/register', (req, res) => {
   const { user } = req.body;
 
+  const buffer = dataURItoBuffer(user.profile);
+
+  let filePath = `photos/users/${generateUniqueId()}.jpg`;
+
+  // Ensure the directory exists
+  const directory = path.dirname(filePath);
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+
+  // Save the buffer to a file
+  fs.writeFile(filePath, buffer, (err) => {
+    if (err) {
+      console.error('Error saving image:', err);
+    } else {
+      console.log('Image saved successfully:', filePath);
+    }
+  });
+
   const newUser = {
     ...user,
-    profile: Buffer.from(user.profile, 'base64')
+    profile: `http://localhost:3180/${filePath}`
   }
 
   const regUser = new User(newUser);
